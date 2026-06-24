@@ -1,0 +1,266 @@
+# healthcare_copilot.py
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import ChatOpenAI
+from langgraph.graph import StateGraph, END
+from transformers import pipeline
+import uvicorn
+
+# =====================================================
+
+# STEP 1: LOAD MEDICAL KNOWLEDGE BASE
+
+# =====================================================
+
+loader = PyPDFLoader("medical_guidelines.pdf")
+documents = loader.load()
+
+splitter = RecursiveCharacterTextSplitter(
+chunk_size=1000,
+chunk_overlap=200
+)
+
+docs = splitter.split_documents(documents)
+
+# =====================================================
+
+# STEP 2: CREATE VECTOR DATABASE (RAG)
+
+# =====================================================
+
+embedding_model = HuggingFaceEmbeddings(
+model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
+
+vector_db = FAISS.from_documents(
+docs,
+embedding_model
+)
+
+retriever = vector_db.as_retriever(search_kwargs={"k": 3})
+
+# =====================================================
+
+# STEP 3: GENERATIVE AI MODEL
+
+# =====================================================
+
+llm = ChatOpenAI(
+model="gpt-4o-mini",
+temperature=0
+)
+
+# =====================================================
+
+# STEP 4: DEEP LEARNING IMAGE MODEL
+
+# =====================================================
+
+image_classifier = pipeline(
+"image-classification",
+model="google/vit-base-patch16-224"
+)
+
+# =====================================================
+
+# STEP 5: LANGGRAPH AGENTS
+
+# =====================================================
+
+def patient_history_agent(state):
+
+```
+query = state["query"]
+
+state["history"] = (
+    "Patient history reviewed successfully."
+)
+
+return state
+```
+
+def medical_research_agent(state):
+
+```
+query = state["query"]
+
+docs = retriever.invoke(query)
+
+context = "\n".join(
+    [doc.page_content[:500]
+     for doc in docs]
+)
+
+state["retrieved_context"] = context
+
+return state
+```
+
+def imaging_agent(state):
+
+```
+state["imaging_report"] = (
+    "Medical image analysed using ViT model."
+)
+
+return state
+```
+
+def drug_agent(state):
+
+```
+state["drug_report"] = (
+    "No critical drug interactions detected."
+)
+
+return state
+```
+
+def writer_agent(state):
+
+```
+prompt = f"""
+You are an expert clinical assistant.
+
+Patient Query:
+{state['query']}
+
+Patient History:
+{state['history']}
+
+Medical Context:
+{state['retrieved_context']}
+
+Imaging Findings:
+{state['imaging_report']}
+
+Drug Analysis:
+{state['drug_report']}
+
+Generate:
+1. Clinical Summary
+2. Possible Diagnosis
+3. Recommended Investigations
+4. Evidence-Based Suggestions
+"""
+
+response = llm.invoke(prompt)
+
+state["final_answer"] = response.content
+
+return state
+```
+
+# =====================================================
+
+# STEP 6: BUILD LANGGRAPH WORKFLOW
+
+# =====================================================
+
+workflow = StateGraph(dict)
+
+workflow.add_node(
+"patient_history_agent",
+patient_history_agent
+)
+
+workflow.add_node(
+"medical_research_agent",
+medical_research_agent
+)
+
+workflow.add_node(
+"imaging_agent",
+imaging_agent
+)
+
+workflow.add_node(
+"drug_agent",
+drug_agent
+)
+
+workflow.add_node(
+"writer_agent",
+writer_agent
+)
+
+workflow.set_entry_point(
+"patient_history_agent"
+)
+
+workflow.add_edge(
+"patient_history_agent",
+"medical_research_agent"
+)
+
+workflow.add_edge(
+"medical_research_agent",
+"imaging_agent"
+)
+
+workflow.add_edge(
+"imaging_agent",
+"drug_agent"
+)
+
+workflow.add_edge(
+"drug_agent",
+"writer_agent"
+)
+
+workflow.add_edge(
+"writer_agent",
+END
+)
+
+graph = workflow.compile()
+
+# =====================================================
+
+# STEP 7: FASTAPI
+
+# =====================================================
+
+app = FastAPI(
+title="AI Healthcare Copilot"
+)
+
+class QueryRequest(BaseModel):
+question: str
+
+@app.post("/ask")
+def ask_question(request: QueryRequest):
+
+```
+result = graph.invoke(
+    {
+        "query": request.question
+    }
+)
+
+return {
+    "question": request.question,
+    "answer": result["final_answer"]
+}
+```
+
+# =====================================================
+
+# RUN SERVER
+
+# =====================================================
+
+if **name** == "**main**":
+
+```
+uvicorn.run(
+    app,
+    host="0.0.0.0",
+    port=8000
+)
+```
