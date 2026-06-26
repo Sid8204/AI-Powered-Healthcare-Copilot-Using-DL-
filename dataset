@@ -1,0 +1,6 @@
+import kagglehub
+
+# Download latest version
+path = kagglehub.dataset_download("nikhilpandey360/chest-xray-masks-and-labels")
+
+print("Path to dataset files:", path)
